@@ -1,0 +1,81 @@
+---
+title: "FinUNCEN - Explore FinCEN Data to and from Thailand"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+les_packages = sapply(c('tidyverse','data.table', 'DT',
+                        'lubridate','ggthemes'),
+                      require, character.only = TRUE)
+```
+
+```{r}
+bcon = fread('data/download_bank_connections.csv',
+             stringsAsFactors = FALSE)
+tmap = fread('data/download_transactions_map.csv',
+             stringsAsFactors = FALSE)
+
+```
+
+
+```{r}
+edges = tmap %>% 
+  select(originator_bank_id,beneficiary_bank_id,amount_transactions) %>%
+  group_by(originator_bank_id,beneficiary_bank_id) %>%
+  summarise(total_amount=sum(amount_transactions)) %>% ungroup %>%
+  mutate(total_m = total_amount) %>%
+  select(originator_bank_id,beneficiary_bank_id,total_amount)
+names(edges) = c('Source','Target','Weight')
+write.csv(edges,'data/edges.csv',row.names = FALSE)
+
+nodes =data.frame(Id=c(tmap$originator_bank_id,tmap$beneficiary_bank_id),
+  Label=c(tmap$originator_bank,tmap$beneficiary_bank),
+  Country=c(tmap$originator_bank_country,tmap$beneficiary_bank_country))
+nodes = nodes %>% mutate(Country=as.character(Country)) %>% 
+  mutate(Label=as.character(Label)) %>% group_by(Id) %>% 
+  summarise(Label=max(Label),Country=max(Country)) %>% ungroup
+write.csv(nodes,'data/nodes.csv',row.names = FALSE)
+```
+
+
+```{r}
+forward_nodes = function(ids,degree=2){
+  res = as.character(ids)
+  for(i in 2:degree){
+    d = edges %>% filter(Source %in% ids)
+    ids = unique(d$Source)
+    res = c(res,d$Target)
+  }
+  unique(res)
+}
+
+backward_nodes = function(ids,degree=2){
+  res = as.character(ids)
+  for(i in 2:degree){
+    d = edges %>% filter(Target %in% ids)
+    res = c(res,d$Source)
+    ids = unique(d$Source)
+  }
+  unique(res)
+}
+
+expand_nodes = function(ids,degree=2){
+  res = as.character(ids)
+  for(i in 2:degree){
+    d = edges %>% filter((Target %in% ids)|(Source %in% ids))
+    res = c(res,d$Source,d$Target)
+    ids = unique(c(d$Source,d$Target))
+  }
+  unique(res)
+}
+
+
+tha = nodes %>% filter(Country=='Thailand')
+ids = tha$Id
+x = expand_nodes(tha$Id,degree=100)
+length(x)
+```
